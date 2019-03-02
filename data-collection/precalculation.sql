@@ -46,14 +46,6 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_stats' AND xtype='U')
     good_cntr_num INT
   )
 
---Создание таблицы для хранения статистики по территории
---IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ter_stats' AND xtype='U')
---  CREATE TABLE guest.ter_stats (
---    TerrID INT NOT NULL PRIMARY KEY,
---    cntr_num INT,
---    good_cntr_num INT
---  )
-
 --Создание таблицы для хранения статистики по ОКПД и поставщику
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_sup_stats' AND xtype='U')
   CREATE TABLE guest.okpd_sup_stats (
@@ -72,14 +64,30 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_org_stats' AND xtype='U'
     PRIMARY KEY (SupID, OrgID)
   )
   
-  --Таблица для статистики по контрактам
-  IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = 'cntr_stats' AND xtype='U')
-    CREATE TABLE guest.cntr_stats (
-      CntrID INT NOT NULL PRIMARY KEY,
-      result BIT
-    )
+ --Таблица для статистики по контрактам
+ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = 'cntr_stats' AND xtype='U')
+   CREATE TABLE guest.cntr_stats (
+     CntrID INT NOT NULL PRIMARY KEY,
+     result BIT
+   )
 
 PRINT('Таблицы успешно созданы')
+GO
+
+
+--Заполнение таблицы cntr_stats результатами исполнения контрактов
+DECLARE @yearToStart INT = 20160000
+
+INSERT INTO guest.cntr_stats
+SELECT t.cntrID, guest.target(t.cntrID)
+FROM
+(
+  SELECT DISTINCT cntr.ID AS cntrID
+  FROM DV.d_OOS_Contracts cntr
+  WHERE cntr.RefSignDate > @yearToStart AND cntr.RefStage IN (3, 4)
+)t
+
+PRINT('Статистика по успешным контрактам создана')
 GO
 
 --I: Заполнение таблицы со статистикой по поставщикам
@@ -95,19 +103,20 @@ guest.sup_num_of_running_contracts(sup.ID),
 guest.sup_num_of_good_contracts(sup.ID),
 guest.sup_num_of_contracts_lvl(sup.ID, 1),
 guest.sup_num_of_contracts_lvl(sup.ID, 2),
-guest.sup_num_of_contracts_lvl(sup.ID, 3),
+NULL,
 guest.sup_avg_contract_price(sup.ID),
 guest.sup_avg_penalty_share(sup.ID)
 FROM DV.d_OOS_Suppliers AS sup
 --II: Заполнение таблицы со статистикой по поставщикам
 UPDATE sup_stats
 SET 
+  sup_mun_cntr_num = sup_cntr_num - sup_fed_cntr_num - sup_sub_cntr_num,
   sup_no_pnl_share = guest.sup_no_penalty_cntr_share(supID, sup_cntr_num),
   sup_1s_sev = guest.sup_one_side_severance_share(supID, sup_cntr_num),
   sup_1s_org_sev = guest.sup_one_side_org_severance_share(supID, sup_cntr_num)
 
 PRINT('Статистика по поставщикам успешно заполнена')
-GO -- 5.7 млн строк за 12ч20мин
+GO
 
 
 --I: Заполнение таблицы со статистикой по заказчикам
@@ -122,17 +131,18 @@ guest.org_num_of_running_contracts(org.ID),
 guest.org_num_of_good_contracts(org.ID),
 guest.org_num_of_contracts_lvl(org.ID, 1),
 guest.org_num_of_contracts_lvl(org.ID, 2),
-guest.org_num_of_contracts_lvl(org.ID, 3),
+NULL,
 guest.org_avg_contract_price(org.ID)
 FROM DV.d_OOS_Org AS org
 --II: Заполнение таблицы со статистикой по заказчикам
 UPDATE org_stats
 SET
+  org_mun_cntr_num = org_cntr_num - org_fed_cntr_num - org_sub_cntr_num,
   org_1s_sev = guest.org_one_side_severance_share(orgID, org_cntr_num),
   org_1s_sup_sev = guest.org_one_side_supplier_severance_share(orgID, org_cntr_num)
 
 PRINT('Статистика по заказчикам успешно заполнена')
-GO --300 тыс. строк за 10ч
+GO
 
 --I: Заполнение таблицы со статистикой по ОКПД: количество завершенных контрактов по ОКПД
 INSERT INTO okpd_stats (okpd_stats.OkpdID, okpd_stats.code, okpd_stats.cntr_num)
@@ -155,29 +165,14 @@ FROM
   INNER JOIN DV.d_OOS_Products AS prods ON prods.RefOKPD2 = okpd.ID
   INNER JOIN DV.f_OOS_Product AS prod ON prod.RefProduct = prods.ID
   INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
-  WHERE 
-    guest.target(cntr.ID) = 0 AND
-    cntr.RefStage IN (3, 4)
+  INNER JOIN guest.cntr_stats gcs ON cntr.ID = gcs.CntrID
+  WHERE gcs.result = 0
   GROUP BY okpd.ID
 )t
 WHERE t.OkpdID = okpd_stats.OkpdID
 
 PRINT('Статистика по ОКПД успешно заполнена')
-GO --19 тыс. строк за 2ч40мин
-
---Заполнение таблицы со статистикой по территориям
---INSERT INTO ter_stats 
---SELECT 
---t.Code1,
---guest.ter_num_of_contracts(t.Code1),
---guest.ter_num_of_good_contracts(t.Code1)
---FROM
---(
---  SELECT DISTINCT
---  ter.Code1
---  FROM DV.d_Territory_RF AS ter
---)t
---GO
+GO
 
 -- Заполнение таблицы okpd_sup_stats
 INSERT INTO okpd_sup_stats
@@ -194,7 +189,7 @@ FROM
 )t
 
 PRINT('Статистика по ОКПД и поставщикам успешно заполнена')
-GO --5.1 млн строк за 16ч24мин
+GO
 
 -- Заполнение таблицы sup_org_stats
 INSERT INTO sup_org_stats
@@ -211,19 +206,4 @@ FROM
 )t
 
 PRINT('Статистика по взаимодействию поставщика и заказчика успешно заполнена')
-GO --6.2 млн строк за 10ч15мин
-
---Заполнение таблицы cntr_stats результатами исполнения контрактов
-DECLARE @yearToStart INT = 20160000
-
-INSERT INTO guest.cntr_stats
-SELECT t.cntrID, guest.target(t.cntrID)
-FROM
-(
-  SELECT DISTINCT cntr.ID AS cntrID
-  FROM DV.d_OOS_Contracts cntr
-  WHERE cntr.RefSignDate > @yearToStart AND cntr.RefStage IN (3, 4)
-)t
-
-PRINT('Статистика по успешным контрактам создана')
-GO --5.3 млн за 1ч10мин
+GO

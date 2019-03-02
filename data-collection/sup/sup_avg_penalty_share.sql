@@ -19,12 +19,13 @@ BEGIN
     (
   		SELECT DISTINCT pnl.Accrual / val.Price AS share
   		FROM DV.f_OOS_Value AS val
-      INNER JOIN DV.d_OOS_Suppliers AS sup ON sup.ID = val.RefSupplier    
+		INNER JOIN DV.d_OOS_Suppliers AS sup ON sup.ID = val.RefSupplier    
   		INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = val.RefContract
   		INNER JOIN DV.d_OOS_Penalties AS pnl ON pnl.RefContract = cntr.ID
   		WHERE
   			sup.ID = @SupID AND 
-  			cntr.RefStage IN (3, 4)
+  			cntr.RefStage IN (3, 4) AND
+			val.Price > 0
     )t 
   )
   

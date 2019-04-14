@@ -7,11 +7,13 @@ GO
 CREATE FUNCTION guest.target (@CntrID INT)
 
 /*
-Функция, которая определяет является ли контракт хорошим или плохим (целевая переменная).
-Завершенный контракт является хорошим ("1"), если
-1) Причина разрыва контракта не указана ИЛИ
-2) Контракт разорван по обоюдному соглашению, И контракт выполнен на более 60%
-В остальных случая контракт считается плохим плохой ("0").
+This function defines status of contract: weather it is bad or not.
+In previous work (bachelor theses, 2018) contract was good, if it meets following requirements:
+1. Contract was finished OR
+2. Contract was terminated by mutual consent AND by this moment contract was executed by more than 60%
+
+In this work definition of good contract will be more strict. Contract must be finished to be regarded as good.
+Second option is no more valid. In all other cases contract is regarded as bad.
 */
 
 RETURNS INT
@@ -20,7 +22,7 @@ BEGIN
   DECLARE @Target INT = (
     SELECT 'target' =
   	  CASE
-    	  WHEN t.Code IN (8361024,8724080,1,0) AND t.Price > 0 AND t.Done / t.Price >= 0.6 THEN 0
+    	  WHEN t.Code == 0 THEN 0
       	ELSE 1
   	  END
   	FROM

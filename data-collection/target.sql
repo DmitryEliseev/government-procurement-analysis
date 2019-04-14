@@ -21,9 +21,7 @@ AS
 BEGIN
   DECLARE @Target INT = (
     SELECT 'target' =
-  	  CASE
-    	  WHEN t.Code == 0 THEN 0
-      	ELSE 1
+  	  CASE WHEN t.Code = 0 THEN 0 ELSE 1
   	  END
   	FROM
   	(

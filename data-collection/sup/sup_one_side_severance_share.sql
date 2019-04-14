@@ -7,11 +7,7 @@ GO
 CREATE FUNCTION guest.sup_one_side_severance_share (@SupID INT, @NumOfCntr INT)
 
 /*
-Сканадальность поставщика: доля контрактов с разрывом отношений в одностороннем порядке по решению поставшика. 
-Под разрывом в одностороннем порядке понимается:
-- разрыв по решению поставщика в одностороннем порядке (код в БД: 8326975);
-- решение поставщика об одностороннем отказе от исполнения контракта (код в БД: 8361023);
-- односторонний отказ поставщика от исполнения контракта в соответствии с гражданским законодательством (код в БД: 8724083)
+Skandalousness of supplier: share of contracts which were terminated unilaterally
 */
 
 RETURNS FLOAT
@@ -29,7 +25,8 @@ BEGIN
   		INNER JOIN DV.d_OOS_TerminReason AS trmn ON trmn.ID = cntrCls.RefTerminReason
   		WHERE 
   			trmn.Code IN (8326975, 8361023, 8724083) AND 
-  			sup.ID = @SupID
+  			sup.ID = @SupID AND
+  			cntr.RefSignDate > guest.utils_get_init_year()
   	)t
   )
   

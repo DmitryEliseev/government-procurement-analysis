@@ -1,8 +1,8 @@
-﻿`/*
+﻿/*
 Collection of training and testing sample
 */
 
---Table for keeping sample
+-- Table for keeping sample
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sample' AND xtype='U')
   CREATE TABLE guest.sample (
     valID INT NOT NULL,
@@ -12,7 +12,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sample' AND xtype='U')
     okpdID INT NOT NULL,
     cntr_reg_num VARCHAR(19),
     
-    --Supplier
+    -- Supplier
     sup_cntr_num INT,
     sup_running_cntr_num INT,
     sup_good_cntr_num FLOAT,
@@ -27,7 +27,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sample' AND xtype='U')
     sup_okpd_cntr_num INT,
     sup_sim_price_share FLOAT,
     
-    --Заказчик
+    -- Заказчик
     org_cntr_num INT,
     org_running_cntr_num INT,
     org_good_cntr_num FLOAT,
@@ -41,12 +41,12 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sample' AND xtype='U')
     cntr_num_together INT,
     org_type INT,
     
-    --Russian classifier of products by type of economic activity
+    -- Russian classifier of products by type of economic activity
     okpd_cntr_num INT,
     okpd_good_cntr_num INT,
     okpd VARCHAR(9),
 
-    --Contract
+    -- Contract
     price BIGINT,
     pmp BIGINT,
     cntr_lvl INT,
@@ -56,19 +56,19 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sample' AND xtype='U')
     price_higher_pmp BIT,
     price_too_low BIT,
 
-    --Target variable
+    -- Target variable
     cntr_result BIT,
     
-     --Primary key
+     -- Primary key
     PRIMARY KEY (valID, cntrID, supID, orgID, okpdID)
   )
 GO
 
---Ignore inserts with dublicated primary keys
+-- Ignore inserts with dublicated primary keys
 ALTER TABLE guest.sample REBUILD WITH (IGNORE_DUP_KEY = ON)
 GO
 
---Insert bad contracts
+-- Insert bad contracts
 INSERT INTO guest.sample
 SELECT
 val.ID, 
@@ -78,7 +78,7 @@ org.ID,
 okpd.ID,
 cntr.RegNum,
 
---Supplier
+-- Supplier
 guest.sup_stats.sup_cntr_num,
 guest.sup_stats.sup_running_cntr_num,
 guest.sup_stats.sup_good_cntr_num AS 'sup_good_cntr_num',
@@ -93,7 +93,7 @@ guest.sup_stats.sup_1s_org_sev,
 guest.okpd_sup_stats.cntr_num AS 'sup_okpd_cntr_num',
 NULL, --Field, which will be calculated later
 
---Customer
+-- Customer
 guest.org_stats.org_cntr_num,
 guest.org_stats.org_running_cntr_num,
 guest.org_stats.org_good_cntr_num AS 'org_good_cntr_num',
@@ -107,12 +107,12 @@ NULL, --Field, which will be calculated later
 guest.sup_org_stats.cntr_num AS 'cntr_num_together',
 org.RefTypeOrg AS 'org_type',
 
---Russian classifier of products by type of economic activity
+-- Russian classifier of products by type of economic activity
 guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 guest.okpd_stats.cntr_num AS 'okpd_cntr_num',
 okpd.Code AS 'okpd', 
 
---Contract	
+-- Contract
 val.Price AS 'price',
 val.PMP AS 'pmp',
 val.RefLevelOrder AS 'cntr_lvl',
@@ -122,7 +122,7 @@ cntr.RefTypePurch AS 'purch_type',
 CASE WHEN (val.PMP > 0) AND (val.Price > val.PMP) THEN 1 ELSE 0 END AS 'price_higher_pmp',
 CASE WHEN val.Price <= val.PMP * 0.6 THEN 1 ELSE 0 END AS 'price_too_low',
 
---Target variable
+-- Target variable
 guest.cntr_stats.result AS 'cntr_result'
 
 FROM DV.f_OOS_Value AS val
@@ -140,11 +140,11 @@ INNER JOIN guest.cntr_stats ON guest.cntr_stats.CntrID = cntr.ID
 WHERE
 	val.Price > 0 AND --Contract with positive price (real contract)
 	cntr.RefStage IN (3, 4) AND --Contract is completed
-	cntr.RefSignDate > 20160000 AND --Contract is signed not earlier than 2016
+	cntr.RefSignDate > guest.utils_get_init_year() AND --Contract is signed not earlier than <starting_point>
 	cntr_stats.result = 1 --Contract is bad
 GO
 
---Insert good contracts
+-- Insert good contracts
 INSERT INTO guest.sample
 SELECT TOP(CAST(@@ROWCOUNT*1.5 AS INT))
 val.ID, 
@@ -154,7 +154,7 @@ org.ID,
 okpd.ID,
 cntr.RegNum,
 
---Supplier
+-- Supplier
 guest.sup_stats.sup_cntr_num,
 guest.sup_stats.sup_running_cntr_num,
 guest.sup_stats.sup_good_cntr_num AS 'sup_good_cntr_num',
@@ -169,7 +169,7 @@ guest.sup_stats.sup_1s_org_sev,
 guest.okpd_sup_stats.cntr_num AS 'sup_okpd_cntr_num',
 NULL, --Field, which will be calculated later
 
---Customer
+-- Customer
 guest.org_stats.org_cntr_num,
 guest.org_stats.org_running_cntr_num,
 guest.org_stats.org_good_cntr_num AS 'org_good_cntr_num',
@@ -183,12 +183,12 @@ NULL, --Field, which will be calculated later
 guest.sup_org_stats.cntr_num AS 'cntr_num_together',
 org.RefTypeOrg AS 'org_type',
 
---Russian classifier of products by type of economic activity
+-- Russian classifier of products by type of economic activity
 guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 guest.okpd_stats.cntr_num AS 'okpd_cntr_num',
 okpd.Code AS 'okpd', 
 
---Contract
+-- Contract
 val.Price AS 'price',
 val.PMP AS 'pmp',
 val.RefLevelOrder AS 'cntr_lvl',
@@ -198,7 +198,7 @@ cntr.RefTypePurch AS 'purch_type',
 CASE WHEN (val.PMP > 0) AND (val.Price > val.PMP) THEN 1 ELSE 0 END AS 'price_higher_pmp',
 CASE WHEN val.Price <= val.PMP * 0.6 THEN 1 ELSE 0 END AS 'price_too_low',
 
---Target variable
+-- Target variable
 guest.cntr_stats.result AS 'cntr_result'
 
 FROM DV.f_OOS_Value AS val
@@ -216,12 +216,12 @@ INNER JOIN guest.cntr_stats ON guest.cntr_stats.CntrID = cntr.ID
 WHERE
   val.Price > 0 AND --Contract with positive price (real contract)
   cntr.RefStage IN (3, 4) AND --Contract is finished
-  cntr.RefSignDate > 20160000 AND --Contract is signed not earlier than 2016 year
+  cntr.RefSignDate > guest.utils_get_init_year() AND --Contract is signed not earlier than <starting_point>
   guest.cntr_stats.result = 0 --Contract is good
 ORDER BY NEWID()
 GO
 
---Insert info about unfinished contracts (contracts to predict result)
+-- Insert info about unfinished contracts (contracts to predict result)
 INSERT INTO guest.sample
 SELECT
 val.ID, 
@@ -231,7 +231,7 @@ org.ID,
 okpd.ID,
 cntr.RegNum,
 
---Supplier
+-- Supplier
 guest.sup_stats.sup_cntr_num,
 guest.sup_stats.sup_running_cntr_num,
 guest.sup_stats.sup_good_cntr_num AS 'sup_good_cntr_num',
@@ -246,7 +246,7 @@ guest.sup_stats.sup_1s_org_sev,
 guest.okpd_sup_stats.cntr_num AS 'sup_okpd_cntr_num',
 NULL,
 
---Customer
+-- Customer
 guest.org_stats.org_cntr_num,
 guest.org_stats.org_running_cntr_num,
 guest.org_stats.org_good_cntr_num AS 'org_good_cntr_num',
@@ -260,12 +260,12 @@ NULL,
 guest.sup_org_stats.cntr_num AS 'cntr_num_together',
 org.RefTypeOrg AS 'org_type',
 
---Russian classifier of products by type of economic activity
+-- Russian classifier of products by type of economic activity
 guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 guest.okpd_stats.cntr_num AS 'okpd_cntr_num',
 okpd.Code AS 'okpd', 
 
---Contract
+-- Contract
 val.Price AS 'price',
 val.PMP AS 'pmp',
 val.RefLevelOrder AS 'cntr_lvl',
@@ -275,7 +275,7 @@ cntr.RefTypePurch AS 'purch_type',
 CASE WHEN (val.PMP > 0) AND (val.Price > val.PMP) THEN 1 ELSE 0 END AS 'price_higher_pmp',
 CASE WHEN val.Price <= val.PMP * 0.6 THEN 1 ELSE 0 END AS 'price_too_low',
 
---Target variable (not defined)
+-- Target variable (not defined)
 NULL
 
 FROM DV.f_OOS_Value AS val
@@ -292,10 +292,10 @@ INNER JOIN guest.sup_org_stats ON (guest.sup_org_stats.SupID = val.RefSupplier A
 WHERE
   val.Price > 0 AND --Contract with positive price (real contract)
   cntr.RefStage = 2 AND --Contract is running
-  cntr.RefSignDate > 20160000 --Contract is signed not earlier than 2016
+  cntr.RefSignDate > guest.utils_get_init_year() --Contract is signed not earlier than <starting_point>
 GO
 
---Calculation of NULL field
+-- Calculation of NULL field
 UPDATE guest.sample
 SET sup_sim_price_share = guest.sup_similar_contracts_by_price_share(val.RefSupplier, ss.sup_cntr_num, val.Price),
     org_sim_price_share = guest.org_similar_contracts_by_price_share(val.RefOrg, os.org_cntr_num, val.Price)

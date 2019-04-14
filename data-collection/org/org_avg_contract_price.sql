@@ -7,7 +7,7 @@ GO
 CREATE FUNCTION guest.org_avg_contract_price (@OrgID INT)
 
 /*
-Средняя цена контракта заказчика
+Average price of contracts
 */
 
 RETURNS BIGINT
@@ -20,7 +20,8 @@ BEGIN
     INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = val.RefContract
     WHERE 
 		org.ID = @OrgID AND 
-		cntr.RefStage IN (3, 4)
+		cntr.RefStage IN (3, 4) AND
+		cntr.RefSignDate > guest.utils_get_init_year()
   )
   RETURN @AvgPrice
 END

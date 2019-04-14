@@ -7,7 +7,7 @@ GO
 CREATE FUNCTION guest.sup_no_penalty_cntr_share (@SupID INT, @NumOfCntr INT)
 
 /*
-Доля контрактов без пени от общего числе завершенных поставщиком контрактов
+Share of contracts without penalties from all number of contracts
 */
 
 RETURNS FLOAT
@@ -24,12 +24,13 @@ BEGIN
       LEFT JOIN DV.d_OOS_Penalties AS pnl ON pnl.RefContract = cntr.ID
       WHERE
         sup.ID = @SupID AND 
-    	cntr.RefStage IN (3, 4) AND
-        pnl.Accrual IS NULL
+    	  cntr.RefStage IN (3, 4) AND
+        pnl.Accrual IS NULL AND
+        cntr.RefSignDate > guest.utils_get_init_year()
     )t 
   )
   
-  -- Обработка случая, когда у поставщика еще нет ни одного завершенного контракта
+  -- If supplier hasn't hda contracts by this moment
   IF @NumOfCntr = 0
   BEGIN
     RETURN 0

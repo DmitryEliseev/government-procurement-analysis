@@ -7,7 +7,9 @@ GO
 CREATE FUNCTION guest.sup_okpd_cntr_num (@SupID INT, @OkpdID INT)
 
 /*
-Количество завершенных контрактов для конкретного ОКПД и поставщика
+Number of contract for given OKPD. OKPD is abbreviation for
+russian classification of products by economic activity.
+Link: https://tender-rus.ru/okpd
 */
 
 RETURNS INT
@@ -25,7 +27,8 @@ BEGIN
       WHERE 
         sup.ID = @SupID AND 
         cntr.RefStage in (3, 4) AND
-		    prods.RefOKPD2 = @OkpdID
+		    prods.RefOKPD2 = @OkpdID AND
+		    cntr.RefSignDate > guest.utils_get_init_year()
     )t
   ) 
   RETURN @cur_okpd_contracts_num

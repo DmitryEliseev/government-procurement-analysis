@@ -7,11 +7,7 @@ GO
 CREATE FUNCTION guest.org_one_side_supplier_severance_share (@OrgID INT, @NumOfCntr INT)
 
 /*
-Репутация заказчика: доля контрактов с разрывом отношений в одностороннем порядке по решению поставшика.
-Под разрывом в одностороннем порядке понимается:
-- разрыв по решению заказчика в одностороннем порядке (код в БД: 8326974);
-- решение заказчика об одностороннем отказе от исполнения контракта (код в БД: 8361022);
-- односторонний отказ заказчика от исполнения контракта в соответствии с гражданским законодательством (код в БД: 8724082)
+Reputation of customer: share of contracts which were terminated by the decision of supplier
 */
 
 RETURNS FLOAT
@@ -29,11 +25,12 @@ BEGIN
   		INNER JOIN DV.d_OOS_TerminReason AS trmn ON trmn.ID = cntrCls.RefTerminReason
   		WHERE 
   			trmn.Code IN (8326975, 8361023, 8724083) AND 
-  			org.ID = @OrgID
+  			org.ID = @OrgID AND
+  			cntr.RefSignDate > guest.utils_get_init_year()
   	)t
   )
   
-   -- Обработка случая, когда у заказщика нет завершенных контрактов
+   -- If customer hasn't had contracts by this moment
   IF @NumOfCntr = 0
   BEGIN
     RETURN 0

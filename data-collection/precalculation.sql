@@ -3,7 +3,7 @@
 и сохранение результатов в промежуточные таблицы
 */
 
---Создание таблицы для хранения статистики по поставщикам
+-- Создание таблицы для хранения статистики по поставщикам
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_stats' AND xtype='U')
   CREATE TABLE guest.sup_stats (
     SupID INT NOT NULL,
@@ -21,7 +21,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_stats' AND xtype='U')
     PRIMARY KEY(SupID)
   )
 
---Создание таблицы для хранения статистики по заказчикам
+-- Создание таблицы для хранения статистики по заказчикам
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='org_stats' AND xtype='U')
   CREATE TABLE guest.org_stats (
     OrgID INT NOT NULL,
@@ -37,7 +37,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='org_stats' AND xtype='U')
     PRIMARY KEY(OrgID)
   )
 
---Создание таблицы для хранения статистики по ОКПД
+-- Создание таблицы для хранения статистики по ОКПД
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_stats' AND xtype='U')
   CREATE TABLE guest.okpd_stats (
     OkpdID INT NOT NULL PRIMARY KEY,
@@ -46,7 +46,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_stats' AND xtype='U')
     good_cntr_num INT
   )
 
---Создание таблицы для хранения статистики по ОКПД и поставщику
+-- Создание таблицы для хранения статистики по ОКПД и поставщику
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_sup_stats' AND xtype='U')
   CREATE TABLE guest.okpd_sup_stats (
     SupID INT NOT NULL,
@@ -55,7 +55,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_sup_stats' AND xtype='U
     PRIMARY KEY (SupID, OkpdID)
   )
 
---Создание таблицы для хранения статистики по взаимодействию поставщика и заказчика
+-- Создание таблицы для хранения статистики по взаимодействию поставщика и заказчика
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_org_stats' AND xtype='U')
   CREATE TABLE guest.sup_org_stats (
     SupID INT NOT NULL,
@@ -64,7 +64,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_org_stats' AND xtype='U'
     PRIMARY KEY (SupID, OrgID)
   )
   
- --Таблица для статистики по контрактам
+ -- Таблица для статистики по контрактам
  IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = 'cntr_stats' AND xtype='U')
    CREATE TABLE guest.cntr_stats (
      CntrID INT NOT NULL PRIMARY KEY,
@@ -75,22 +75,22 @@ PRINT('Таблицы успешно созданы')
 GO
 
 
---Заполнение таблицы cntr_stats результатами исполнения контрактов
-DECLARE @yearToStart INT = 20160000
-
+-- Заполнение таблицы cntr_stats результатами исполнения контрактов
 INSERT INTO guest.cntr_stats
 SELECT t.cntrID, guest.target(t.cntrID)
 FROM
 (
   SELECT DISTINCT cntr.ID AS cntrID
   FROM DV.d_OOS_Contracts cntr
-  WHERE cntr.RefSignDate > @yearToStart AND cntr.RefStage IN (3, 4)
+  WHERE
+    cntr.RefSignDate > guest.utils_get_init_year() AND
+    cntr.RefStage IN (3, 4)
 )t
 
 PRINT('Статистика по успешным контрактам создана')
 GO
 
---I: Заполнение таблицы со статистикой по поставщикам
+-- I: Заполнение таблицы со статистикой по поставщикам
 INSERT INTO sup_stats (
   SupID, sup_cntr_num, sup_running_cntr_num, sup_good_cntr_num, 
   sup_fed_cntr_num, sup_sub_cntr_num, sup_mun_cntr_num, 
@@ -107,7 +107,7 @@ NULL,
 guest.sup_avg_contract_price(sup.ID),
 guest.sup_avg_penalty_share(sup.ID)
 FROM DV.d_OOS_Suppliers AS sup
---II: Заполнение таблицы со статистикой по поставщикам
+-- II: Заполнение таблицы со статистикой по поставщикам
 UPDATE sup_stats
 SET 
   sup_mun_cntr_num = sup_cntr_num - sup_fed_cntr_num - sup_sub_cntr_num,
@@ -119,7 +119,7 @@ PRINT('Статистика по поставщикам успешно запо�
 GO
 
 
---I: Заполнение таблицы со статистикой по заказчикам
+-- I: Заполнение таблицы со статистикой по заказчикам
 INSERT INTO org_stats (
   OrgID, org_cntr_num, org_running_cntr_num, org_good_cntr_num,
   org_fed_cntr_num, org_sub_cntr_num, org_mun_cntr_num, org_cntr_avg_price
@@ -134,7 +134,8 @@ guest.org_num_of_contracts_lvl(org.ID, 2),
 NULL,
 guest.org_avg_contract_price(org.ID)
 FROM DV.d_OOS_Org AS org
---II: Заполнение таблицы со статистикой по заказчикам
+
+-- II: Заполнение таблицы со статистикой по заказчикам
 UPDATE org_stats
 SET
   org_mun_cntr_num = org_cntr_num - org_fed_cntr_num - org_sub_cntr_num,
@@ -144,7 +145,7 @@ SET
 PRINT('Статистика по заказчикам успешно заполнена')
 GO
 
---I: Заполнение таблицы со статистикой по ОКПД: количество завершенных контрактов по ОКПД
+-- I: Заполнение таблицы со статистикой по ОКПД: количество завершенных контрактов по ОКПД
 INSERT INTO okpd_stats (okpd_stats.OkpdID, okpd_stats.code, okpd_stats.cntr_num)
 SELECT okpd.ID, okpd.Code, COUNT(cntr.ID)
 FROM 
@@ -152,9 +153,12 @@ DV.d_OOS_OKPD2 AS okpd
 INNER JOIN DV.d_OOS_Products AS prods ON prods.RefOKPD2 = okpd.ID
 INNER JOIN DV.f_OOS_Product AS prod ON prod.RefProduct = prods.ID
 INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
-WHERE cntr.RefStage IN (3, 4)
+WHERE
+  cntr.RefStage IN (3, 4) AND
+  cntr.RefSignDate > guest.utils_get_init_year()
 GROUP BY okpd.ID, okpd.Code
---II: Заполнение таблицы со статистикой по ОКПД: количество хороших контрактов по ОКПД
+
+-- II: Заполнение таблицы со статистикой по ОКПД: количество хороших контрактов по ОКПД
 UPDATE okpd_stats
 SET okpd_stats.good_cntr_num = t.good_cntr_num
 FROM
@@ -166,7 +170,9 @@ FROM
   INNER JOIN DV.f_OOS_Product AS prod ON prod.RefProduct = prods.ID
   INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
   INNER JOIN guest.cntr_stats gcs ON cntr.ID = gcs.CntrID
-  WHERE gcs.result = 0
+  WHERE
+    gcs.result = 0 AND
+    cntr.RefSignDate > guest.utils_get_init_year()
   GROUP BY okpd.ID
 )t
 WHERE t.OkpdID = okpd_stats.OkpdID
@@ -184,7 +190,9 @@ FROM
   INNER JOIN DV.d_OOS_Suppliers AS sup ON sup.ID = prod.RefSupplier
   INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
   INNER JOIN DV.d_OOS_Products AS prods ON prods.ID = prod.RefProduct
-  WHERE cntr.RefStage in (3, 4)
+  WHERE
+    ntr.RefStage in (3, 4) AND
+    cntr.RefSignDate > guest.utils_get_init_year()
   GROUP BY sup.ID, prods.RefOKPD2
 )t
 
@@ -201,7 +209,9 @@ FROM
   INNER JOIN DV.d_OOS_Suppliers AS sup ON sup.ID = val.RefSupplier
   INNER JOIN DV.d_OOS_Org AS org ON org.ID = val.RefOrg
   INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = val.RefContract
-  WHERE cntr.RefStage IN (3, 4)
+  WHERE
+    cntr.RefStage IN (3, 4) AND
+    cntr.RefSignDate > guest.utils_get_init_year()
   GROUP BY sup.ID, org.ID
 )t
 

@@ -11,6 +11,9 @@ for %%G in (*.sql) do sqlcmd /S %server_name% /d %db_name% -U %username% -P %pwd
 cd ../sup
 for %%G in (*.sql) do sqlcmd /S %server_name% /d %db_name% -U %username% -P %pwd% -i"%%G"
 
+cd ../utils
+for %%G in (*.sql) do sqlcmd /S %server_name% /d %db_name% -U %username% -P %pwd% -i"%%G"
+
 cd ..
 sqlcmd /S %server_name% /d %db_name% -U %username% -P %pwd% -i"target.sql"
 

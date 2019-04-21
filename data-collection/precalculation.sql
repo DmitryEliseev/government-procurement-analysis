@@ -145,7 +145,7 @@ SET
 PRINT('Статистика по заказчикам успешно заполнена')
 GO
 
--- I: Заполнение таблицы со статистикой по ОКПД: количество завершенных контрактов по ОКПД
+-- I: Заполнени е таблицы со статистикой по ОКПД: количество завершенных контрактов по ОКПД
 INSERT INTO okpd_stats (okpd_stats.OkpdID, okpd_stats.code, okpd_stats.cntr_num)
 SELECT okpd.ID, okpd.Code, COUNT(cntr.ID)
 FROM 
@@ -191,7 +191,7 @@ FROM
   INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
   INNER JOIN DV.d_OOS_Products AS prods ON prods.ID = prod.RefProduct
   WHERE
-    ntr.RefStage in (3, 4) AND
+    cntr.RefStage in (3, 4) AND
     cntr.RefSignDate > guest.utils_get_init_year()
   GROUP BY sup.ID, prods.RefOKPD2
 )t

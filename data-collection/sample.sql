@@ -62,6 +62,8 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sample' AND xtype='U')
      -- Primary key
     PRIMARY KEY (valID, cntrID, supID, orgID, okpdID)
   )
+
+PRINT('Table for sample was created')
 GO
 
 -- Ignore inserts with dublicated primary keys
@@ -142,6 +144,8 @@ WHERE
 	cntr.RefStage IN (3, 4) AND --Contract is completed
 	cntr.RefSignDate > guest.utils_get_init_year() AND --Contract is signed not earlier than <starting_point>
 	cntr_stats.result = 1 --Contract is bad
+
+PRINT('Data about BAD contracts was collected')
 GO
 
 -- Insert good contracts
@@ -219,6 +223,8 @@ WHERE
   cntr.RefSignDate > guest.utils_get_init_year() AND --Contract is signed not earlier than <starting_point>
   guest.cntr_stats.result = 0 --Contract is good
 ORDER BY NEWID()
+
+PRINT('Data about GOOD contracts was collected')
 GO
 
 -- Insert info about unfinished contracts (contracts to predict result)
@@ -293,6 +299,8 @@ WHERE
   val.Price > 0 AND --Contract with positive price (real contract)
   cntr.RefStage = 2 AND --Contract is running
   cntr.RefSignDate > guest.utils_get_init_year() --Contract is signed not earlier than <starting_point>
+
+PRINT('Data about running contracts was collected')
 GO
 
 -- Calculation of NULL field
@@ -303,4 +311,6 @@ FROM guest.sample s
 INNER JOIN DV.f_OOS_Value val ON s.valID = val.ID
 INNER JOIN guest.sup_stats ss ON ss.SupID = val.RefSupplier
 INNER JOIN guest.org_stats os ON os.OrgID = val.RefOrg
+
+PRINT('NULL fields were updated')
 GO

@@ -253,3 +253,27 @@ WHERE
 
 PRINT('NULL fields were updated')
 GO
+
+-- Two extra columns about federal subjects where customer and supplier are from
+ALTER TABLE guest.sample ADD org_ter INT, sup_ter INT
+ALTER TABLE guest.org_stats ADD org_fed_ter INT
+ALTER TABLE guest.sup_stats ADD sup_fed_ter INT
+GO
+
+UPDATE guest.org_stats
+SET org_fed_ter = guest.utils_get_federal_subject(org.refTerritory)
+FROM guest.org_stats org_st
+INNER JOIN DV.d_OOS_Org AS org on org.ID = org_st.OrgID
+GO
+
+UPDATE guest.sup_stats
+SET sup_fed_ter = guest.utils_get_federal_subject(sup.refTerritory)
+FROM guest.sup_stats sup_st
+INNER JOIN DV.d_OOS_Suppliers AS sup on sup.ID = sup_st.SupID
+GO
+
+UPDATE guest.sample
+SET sup_ter = sup_st.sup_fed_ter, org_ter = org_st.org_fed_ter
+FROM guest.sample AS s
+INNER JOIN guest.org_stats AS org_st ON org_st.OrgID = s.orgID
+INNER JOIN guest.sup_stats AS sup_st ON sup_st.SupID = s.supID

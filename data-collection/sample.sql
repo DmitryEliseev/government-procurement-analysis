@@ -148,9 +148,13 @@ WHERE
 PRINT('Data about BAD contracts was collected')
 GO
 
+
+-- Unique CntrID of good contracts in `sample` table
+DECLARE @UniqueCntrID_positive TABLE (cntrID INT)
+INSERT @UniqueCntrID_positive SELECT DISTINCT cntrID FROM guest.sample AS s WHERE s.cntr_result = 0
+
 -- Insert good contracts
-INSERT INTO guest.sample
-SELECT TOP(CAST(@@ROWCOUNT*1.5 AS INT))
+INSERT INTO guest.sample SELECT
 val.ID, 
 cntr.ID,
 val.RefSupplier,
@@ -217,13 +221,20 @@ INNER JOIN guest.okpd_stats ON okpd.ID = guest.okpd_stats.OkpdID
 INNER JOIN guest.okpd_sup_stats ON (guest.okpd_sup_stats.SupID = val.RefSupplier AND guest.okpd_sup_stats.OkpdID = okpd.ID)
 INNER JOIN guest.sup_org_stats ON (guest.sup_org_stats.SupID = val.RefSupplier AND guest.sup_org_stats.OrgID = org.ID)
 INNER JOIN guest.cntr_stats ON guest.cntr_stats.CntrID = cntr.ID
-WHERE
-  val.Price > 0 AND --Contract with positive price (real contract)
-  cntr.RefStage IN (3, 4) AND --Contract is finished
-  cntr.RefSignDate > guest.utils_get_init_year() AND --Contract is signed not earlier than <starting_point>
-  guest.cntr_stats.result = 0 --Contract is good
-ORDER BY NEWID()
-
+WHERE cntr.ID IN (
+	SELECT DISTINCT cntr.ID 
+	FROM DV.f_OOS_Value AS val
+	INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = val.RefContract
+	INNER JOIN guest.cntr_stats AS cntrstats ON cntrstats.CntrID = cntr.ID
+	WHERE
+		val.Price > 0 AND --Contract with positive price (real contract)
+		cntr.RefStage IN (3, 4) AND --Contract is finished
+		cntr.RefSignDate > guest.utils_get_init_year() AND --Contract is signed not earlier than <starting_point>
+		cntrstats.result = 0 AND --Contract is good
+		cntr.ID NOT IN (SELECT cntrID FROM @UniqueCntrID_positive) AND --To add new good contracts without duplication if necessary
+		(ABS(CAST((BINARY_CHECKSUM(cntr.ID)) as int)) % 100) < 20 -- I/O and CPU optimized version of ORDER BY NEWID(): https://docs.microsoft.com/en-us/previous-versions/software-testing/cc441928(v=msdn.10)
+		
+)
 PRINT('Data about GOOD contracts was collected')
 GO
 
@@ -235,6 +246,10 @@ FROM guest.sample s
 INNER JOIN DV.f_OOS_Value val ON s.valID = val.ID
 INNER JOIN guest.sup_stats ss ON ss.SupID = val.RefSupplier
 INNER JOIN guest.org_stats os ON os.OrgID = val.RefOrg
+-- WHERE clause is used for the case when new data was collected on previous steps after running this piece of script
+WHERE 
+	sup_sim_price_share is NULL 
+	OR org_sim_price_share is NULL 
 
 PRINT('NULL fields were updated')
 GO

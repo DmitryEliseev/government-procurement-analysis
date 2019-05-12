@@ -1,9 +1,8 @@
 ﻿/*
-Предварительный подсчет необходимых для построения целевый выборки метрик 
-и сохранение результатов в промежуточные таблицы
+Preliminary calculations
 */
 
--- Создание таблицы для хранения статистики по поставщикам
+-- Table creation for storing data on supplier
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_stats' AND xtype='U')
   CREATE TABLE guest.sup_stats (
     SupID INT NOT NULL,
@@ -21,7 +20,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_stats' AND xtype='U')
     PRIMARY KEY(SupID)
   )
 
--- Создание таблицы для хранения статистики по заказчикам
+-- Table creation for storing data on customer
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='org_stats' AND xtype='U')
   CREATE TABLE guest.org_stats (
     OrgID INT NOT NULL,
@@ -37,7 +36,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='org_stats' AND xtype='U')
     PRIMARY KEY(OrgID)
   )
 
--- Создание таблицы для хранения статистики по ОКПД
+-- Table creation for storing data on OKPD
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_stats' AND xtype='U')
   CREATE TABLE guest.okpd_stats (
     OkpdID INT NOT NULL PRIMARY KEY,
@@ -46,7 +45,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_stats' AND xtype='U')
     good_cntr_num INT
   )
 
--- Создание таблицы для хранения статистики по ОКПД и поставщику
+-- Table creation for storing data on number of contracts of suppliers by OKPD
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_sup_stats' AND xtype='U')
   CREATE TABLE guest.okpd_sup_stats (
     SupID INT NOT NULL,
@@ -55,7 +54,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='okpd_sup_stats' AND xtype='U
     PRIMARY KEY (SupID, OkpdID)
   )
 
--- Создание таблицы для хранения статистики по взаимодействию поставщика и заказчика
+-- Table creation for storing data on interection of suppliers and customers
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_org_stats' AND xtype='U')
   CREATE TABLE guest.sup_org_stats (
     SupID INT NOT NULL,
@@ -64,18 +63,18 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='sup_org_stats' AND xtype='U'
     PRIMARY KEY (SupID, OrgID)
   )
   
- -- Таблица для статистики по контрактам
+ -- Table creation for storing result of contracts
  IF NOT EXISTS (SELECT * FROM sysobjects WHERE name = 'cntr_stats' AND xtype='U')
    CREATE TABLE guest.cntr_stats (
      CntrID INT NOT NULL PRIMARY KEY,
      result BIT
    )
 
-PRINT('Таблицы успешно созданы')
+PRINT('Tables are created')
 GO
 
 
--- Заполнение таблицы cntr_stats результатами исполнения контрактов
+-- Data collection for table `cntr_stats`
 INSERT INTO guest.cntr_stats
 SELECT t.cntrID, guest.target(t.cntrID)
 FROM
@@ -87,10 +86,10 @@ FROM
     cntr.RefStage IN (3, 4)
 )t
 
-PRINT('Статистика по успешным контрактам создана')
+PRINT('Data for table `cntr_stats` is collected')
 GO
 
--- I: Заполнение таблицы со статистикой по поставщикам
+-- Data collection for table `sup_stats` (step I)
 INSERT INTO sup_stats (
   SupID, sup_cntr_num, sup_running_cntr_num, sup_good_cntr_num, 
   sup_fed_cntr_num, sup_sub_cntr_num, sup_mun_cntr_num, 
@@ -107,7 +106,8 @@ NULL,
 guest.sup_avg_contract_price(sup.ID),
 guest.sup_avg_penalty_share(sup.ID)
 FROM DV.d_OOS_Suppliers AS sup
--- II: Заполнение таблицы со статистикой по поставщикам
+
+-- Data collection for table `sup_stats` (step II)
 UPDATE sup_stats
 SET 
   sup_mun_cntr_num = sup_cntr_num - sup_fed_cntr_num - sup_sub_cntr_num,
@@ -115,11 +115,11 @@ SET
   sup_1s_sev = guest.sup_one_side_severance_share(supID, sup_cntr_num),
   sup_1s_org_sev = guest.sup_one_side_org_severance_share(supID, sup_cntr_num)
 
-PRINT('Статистика по поставщикам успешно заполнена')
+PRINT('Data for table `sup_stats` is collected')
 GO
 
 
--- I: Заполнение таблицы со статистикой по заказчикам
+-- Data collection for table `org_stats` (step I)
 INSERT INTO org_stats (
   OrgID, org_cntr_num, org_running_cntr_num, org_good_cntr_num,
   org_fed_cntr_num, org_sub_cntr_num, org_mun_cntr_num, org_cntr_avg_price
@@ -135,17 +135,17 @@ NULL,
 guest.org_avg_contract_price(org.ID)
 FROM DV.d_OOS_Org AS org
 
--- II: Заполнение таблицы со статистикой по заказчикам
+-- Data collection for table `org_stats` (step II)
 UPDATE org_stats
 SET
   org_mun_cntr_num = org_cntr_num - org_fed_cntr_num - org_sub_cntr_num,
   org_1s_sev = guest.org_one_side_severance_share(orgID, org_cntr_num),
   org_1s_sup_sev = guest.org_one_side_supplier_severance_share(orgID, org_cntr_num)
 
-PRINT('Статистика по заказчикам успешно заполнена')
+PRINT('Data for table `org_stats` is collected')
 GO
 
--- I: Заполнение таблицы со статистикой по ОКПД: количество завершенных контрактов по ОКПД
+-- Data collection for table `okpd_stats` (step I)
 INSERT INTO okpd_stats (okpd_stats.OkpdID, okpd_stats.code, okpd_stats.cntr_num)
 SELECT okpd.ID, okpd.Code, COUNT(cntr.ID)
 FROM 
@@ -158,7 +158,7 @@ WHERE
   cntr.RefSignDate > guest.utils_get_init_year()
 GROUP BY okpd.ID, okpd.Code
 
--- II: Заполнение таблицы со статистикой по ОКПД: количество хороших контрактов по ОКПД
+-- Data collection for table `okpd_stats` (step II)
 UPDATE okpd_stats
 SET okpd_stats.good_cntr_num = t.good_cntr_num
 FROM
@@ -177,10 +177,10 @@ FROM
 )t
 WHERE t.OkpdID = okpd_stats.OkpdID
 
-PRINT('Статистика по ОКПД успешно заполнена')
+PRINT('Data for table `okpd_stats` is collected')
 GO
 
--- Заполнение таблицы okpd_sup_stats
+-- Data collection for table `okpd_sup_stats`
 INSERT INTO okpd_sup_stats
 SELECT t.SupID, t.OkpdID, guest.sup_okpd_cntr_num(t.SupID, t.okpdID)
 FROM 
@@ -191,15 +191,15 @@ FROM
   INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
   INNER JOIN DV.d_OOS_Products AS prods ON prods.ID = prod.RefProduct
   WHERE
-    ntr.RefStage in (3, 4) AND
+    cntr.RefStage in (3, 4) AND
     cntr.RefSignDate > guest.utils_get_init_year()
   GROUP BY sup.ID, prods.RefOKPD2
 )t
 
-PRINT('Статистика по ОКПД и поставщикам успешно заполнена')
+PRINT('Data for table `okpd_sup_stats` is collected')
 GO
 
--- Заполнение таблицы sup_org_stats
+-- Data collection for table `sup_org_stats`
 INSERT INTO sup_org_stats
 SELECT t.supID, t.orgID, guest.sup_org_cntr_num(t.supID, t.orgID)
 FROM
@@ -215,5 +215,5 @@ FROM
   GROUP BY sup.ID, org.ID
 )t
 
-PRINT('Статистика по взаимодействию поставщика и заказчика успешно заполнена')
+PRINT('Data for table `sup_org_stats` is collected')
 GO

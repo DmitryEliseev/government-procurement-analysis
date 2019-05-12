@@ -110,8 +110,8 @@ guest.sup_org_stats.cntr_num AS 'cntr_num_together',
 org.RefTypeOrg AS 'org_type',
 
 -- Russian classifier of products by type of economic activity
-guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 guest.okpd_stats.cntr_num AS 'okpd_cntr_num',
+guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 okpd.Code AS 'okpd', 
 
 -- Contract
@@ -192,8 +192,8 @@ guest.sup_org_stats.cntr_num AS 'cntr_num_together',
 org.RefTypeOrg AS 'org_type',
 
 -- Russian classifier of products by type of economic activity
-guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 guest.okpd_stats.cntr_num AS 'okpd_cntr_num',
+guest.okpd_stats.good_cntr_num as 'okpd_good_cntr_num',
 okpd.Code AS 'okpd', 
 
 -- Contract

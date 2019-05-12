@@ -168,11 +168,8 @@ FROM
   DV.d_OOS_OKPD2 AS okpd 
   INNER JOIN DV.d_OOS_Products AS prods ON prods.RefOKPD2 = okpd.ID
   INNER JOIN DV.f_OOS_Product AS prod ON prod.RefProduct = prods.ID
-  INNER JOIN DV.d_OOS_Contracts AS cntr ON cntr.ID = prod.RefContract
-  INNER JOIN guest.cntr_stats gcs ON cntr.ID = gcs.CntrID
-  WHERE
-    gcs.result = 0 AND
-    cntr.RefSignDate > guest.utils_get_init_year()
+  INNER JOIN guest.cntr_stats gcs ON prod.RefContract = gcs.CntrID
+  WHERE gcs.result = 0
   GROUP BY okpd.ID
 )t
 WHERE t.OkpdID = okpd_stats.OkpdID

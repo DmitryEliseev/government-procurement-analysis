@@ -29,7 +29,7 @@ def shorten_okpd_(data: pd.DataFrame, okpd_sym=2, debug=True):
     
     return df, okpd_column_name, unique_okpd
 
-def agg_stats_for_okpd_(data: pd.DataFrame, okpd_column: str, unique_okpds: list, debug=True):
+def agg_stats_for_okpd_(data: pd.DataFrame, okpd_column_name: str, unique_okpds: list, debug=True):
     """
     Aggregation for columns `okpd_cntr_num` and `okpd_good_cntr_num` for shortened OKPD
     """
@@ -38,14 +38,14 @@ def agg_stats_for_okpd_(data: pd.DataFrame, okpd_column: str, unique_okpds: list
     
     df_ = df.drop_duplicates('okpd')
     agg_df = (
-        df_[['okpd_cntr_num', 'okpd_good_cntr_num', okpd_column]]
-        .groupby(okpd_column)[['okpd_cntr_num', 'okpd_good_cntr_num']]
+        df_[['okpd_cntr_num', 'okpd_good_cntr_num', okpd_column_name]]
+        .groupby(okpd_column_name)[['okpd_cntr_num', 'okpd_good_cntr_num']]
         .agg('sum')
     )
     
     for row in agg_df.itertuples():
-        df.loc[df[okpd_column] == row.Index, 'okpd_cntr_num'] = row.okpd_cntr_num
-        df.loc[df[okpd_column] == row.Index, 'okpd_good_cntr_num'] = row.okpd_good_cntr_num
+        df.loc[df[okpd_column_name] == row.Index, 'okpd_cntr_num'] = row.okpd_cntr_num
+        df.loc[df[okpd_column_name] == row.Index, 'okpd_good_cntr_num'] = row.okpd_good_cntr_num
     
     if debug:
         print('Data for columns `okpd_cntr_num` and `okpd_good_cntr_num` is aggregated')
@@ -58,16 +58,20 @@ def agg_stats_for_sup_(data: pd.DataFrame, okpd_column_name: str, unique_okpds: 
     """
     
     df = data.copy()
-
+    
+    
     df_ = df.drop_duplicates(['supID', 'okpd'])
     agg_df = (
-        df_[['sup_okpd_cntr_num', okpd_column_name, 'supID']]
-        .groupby(['supID', okpd_column_name])['sup_okpd_cntr_num']
-        .agg('sum')
-    )
-    
-    for row in agg_df.iteritems():
-        df.loc[(df.supID == row[0][0]) & (df[okpd_column] == row[0][1]), 'sup_okpd_cntr_num'] =  row[1]
+            df_[['sup_okpd_cntr_num', okpd_column_name, 'supID']]
+            .groupby(['supID', okpd_column_name])['sup_okpd_cntr_num']
+            .agg('sum').to_dict()
+        )
+
+    res = []
+    for row in df.itertuples():
+        res.append([agg_df[(row.supID, getattr(row, okpd_column_name))]])
+
+    df.loc[:, 'sup_okpd_cntr_num'] = res
     
     if debug:
         print('Data for column `sup_okpd_cntr_num` is aggregated')
@@ -106,6 +110,9 @@ def create_new_var_based_on_okpd_(data: pd.DataFrame, okpd_column_name, debug=Tr
     cntrID_cv = cntr_many_okpd.cntrID.value_counts()
     df['okpd_num'] = df.cntrID.apply(lambda cntr_id: cntrID_cv.get(cntr_id, 1))
     
+    if debug:
+        print('New variable `okpd_num` was created')
+    
     return df
 
 def get_dummies_for_okpd_vars_(data: pd.DataFrame, okpd_column_name: str, debug=True):
@@ -124,6 +131,9 @@ def get_dummies_for_okpd_vars_(data: pd.DataFrame, okpd_column_name: str, debug=
         df[okpd_column_name], 
         prefix='socs'
     )
+    
+    if debug:
+        print('Dummy variables for `{}` and `sup_okpd_contract_share` were created'.format(okpd_column_name))
     
     return pd.concat([df, okpd_dummies, sup_okpd_cntr_share_dummies], axis=1)
 
@@ -172,6 +182,9 @@ def flatten_agg_okpds_(data: pd.DataFrame, okpd_column_name, debug=True):
     # Concatenation of two dataframes
     df = pd.concat([df_one_okpd, df_many_okpd], sort=False)
     
+    if debug:
+        print('Data was flattened: one contract = one row')
+    
     return df.sample(frac=1).reset_index(drop=True)
 
 def transform_okpd_good_share_(data: pd.DataFrame, data_with_dup: pd.DataFrame, okpd_column_name: str, debug=True):
@@ -207,6 +220,9 @@ def transform_okpd_good_share_(data: pd.DataFrame, data_with_dup: pd.DataFrame, 
     
     # Deleting initial variable
     df = df.drop(['okpd_good_cntr_share'], axis=1)
+    
+    if debug:
+        print('New variables (min, mean, max) instead of `okpd_good_cntr_share` were created')
     
     return df
 
@@ -266,6 +282,9 @@ def transform_sup_okpd_cntr_share_(data: pd.DataFrame, okpd_column_name: str, de
     
     # Updating values of `socs_` columns in dataset
     df.iloc[:, clms.index(socs[0]):clms.index(socs[-1]) + 1] = np.array(res)
+    
+    if debug:
+        print('`socs_` variables were updated')
     
     return df.sample(frac=1).reset_index(drop=True)
 

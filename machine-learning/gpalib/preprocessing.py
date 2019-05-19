@@ -5,6 +5,8 @@
 Library with functions for data preprocessing
 """
 
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 
@@ -74,7 +76,7 @@ def agg_stats_for_sup_(data: pd.DataFrame, okpd_column_name: str, unique_okpds: 
     df.loc[:, 'sup_okpd_cntr_num'] = res
     
     if debug:
-        print('Data for column `sup_okpd_cntr_num` is aggregated')
+        print('Data for column `sup_okpd_cntr_num` is aggregated\n')
     
     return df
 
@@ -284,7 +286,7 @@ def transform_sup_okpd_cntr_share_(data: pd.DataFrame, okpd_column_name: str, de
     df.iloc[:, clms.index(socs[0]):clms.index(socs[-1]) + 1] = np.array(res)
     
     if debug:
-        print('`socs_` variables were updated')
+        print('`socs_` variables were updated\n')
     
     return df.sample(frac=1).reset_index(drop=True)
 
@@ -310,3 +312,128 @@ def flatten_data(data: pd.DataFrame, okpd_column_name: str, debug=True):
     data4 = transform_sup_okpd_cntr_share_(data3, okpd_column_name, debug=debug)
     
     return data4
+
+# ======================================================================================
+# Feature engineering
+# ======================================================================================
+
+def feature_eng_new_time_vars_(data: pd. DataFrame, debug=True):
+    df = data.copy()
+    
+    # Planned length of contracts in days
+    cntr_start = pd.to_datetime(df['sign_date'], format="%Y%m%d")
+    cntr_end = pd.to_datetime(df['exec_date'], format="%Y%m%d")
+    df['plan_cntr_len'] = (cntr_end - cntr_start).apply(lambda time_delta: time_delta.days)
+    
+    # Price per day
+    df['day_price'] = df.price / df.plan_cntr_len
+
+    # Month of contract signing
+    df['sign_month'] = df['sign_date'].astype(str).str[4:6].astype(int)
+    
+    # Quarter of contract signing
+    df['sign_quarter'] = df.sign_month.apply(lambda a: (a - 1) // 3 + 1)
+    
+    if debug:
+        print('4 new variables were created: `plan_cntr_len`, ' 
+              '`day_price`, `sign_month`, `sign_quarter`. '
+              'Data shape: {}'.format(df.shape))
+
+    return df
+
+def feature_eng_new_share_vars_(data: pd. DataFrame, debug=True):
+    df = data.copy()
+
+    df['sup_good_cntr_share'] = df.sup_good_cntr_num / df.sup_cntr_num
+    df['sup_fed_cntr_share'] = df.sup_fed_cntr_num / df.sup_cntr_num
+    df['sup_sub_cntr_share'] = df.sup_sub_cntr_num / df.sup_cntr_num
+    df['sup_mun_cntr_share'] = df.sup_mun_cntr_num / df.sup_cntr_num
+
+    df['org_good_cntr_share'] = df.org_good_cntr_num / df.org_cntr_num
+    df['org_fed_cntr_share'] = df.org_fed_cntr_num / df.org_cntr_num
+    df['org_sub_cntr_share'] = df.org_sub_cntr_num / df.org_cntr_num
+    df['org_mun_cntr_share'] = df.org_mun_cntr_num / df.org_cntr_num
+    
+    if debug:
+        print(
+            '8 new variables were created: `sup_good_cntr_share`, `sup_fed_cntr_share`, '
+            '`sup_sub_cntr_share` and `sup_mun_cntr_share` and the same for customer. '
+            'Data shape: {}'.format(df.shape))
+    
+    return df
+
+def drop_useless_columns_(data: pd.DataFrame, okpd_column_name: str, debug=True):
+    
+    df = data.copy()
+    
+    columns_to_drop = [
+        # Delete useless IDs
+        'valID', 'supID', 'orgID', 'okpdID', 'cntr_reg_num',
+
+        # Delete `okpd` and shortened variant of OKPD
+        'okpd', okpd_column_name,
+
+        # Delete variables transformed in share variables
+        'sup_good_cntr_num', 'sup_fed_cntr_num', 'sup_sub_cntr_num', 
+        'sup_mun_cntr_num', 'sup_okpd_cntr_num', 
+
+        # Delete `sup_okpd_cntr_share` due to `socs_` variables existence
+        'sup_okpd_cntr_share',
+
+        # Delete variables transformed in share variables
+        'org_good_cntr_num', 'org_fed_cntr_num', 'org_sub_cntr_num', 'org_mun_cntr_num',
+
+        # Delete `okpd_good_cntr_num` due to `okpd_good_share_` min, mean, max
+        'okpd_good_cntr_num',
+
+
+        # Delete `sign_date` and `exec_date` => `plan_cntr_len`, `sign_month`, `sign_quarter`
+        'sign_date', 'exec_date']
+    
+    df.drop(columns_to_drop, axis=1, inplace=True)
+    
+    if debug:
+        print('{} variables were deleted: {}. Data shape: {}'.format(
+            len(columns_to_drop),
+            ', '.join(['`{}`'.format(clmn) for clmn in columns_to_drop]),
+            df.shape))
+    
+    return df
+
+def reorder_columns_(data: pd.DataFrame, okpd_column_name: str, debug=True):
+    df = data.copy()
+    
+    df = df.rename(columns={'okpd_num': 'cntr_okpd_num'})
+    
+    # Reorder columns: `cntr_result` is last column
+    columns_new_order = (
+        ['cntrID'] +
+        [clm for clm in df.columns if clm.startswith('sup')] +
+        [clm for clm in df.columns if clm.startswith('org')] +
+        ['cntr_num_together'] +
+        [clm for clm in df.columns if clm.startswith('okpd_')] +
+        [
+            'sign_month', 'sign_quarter', 'cntr_okpd_num', 'plan_cntr_len',
+            'day_price', 'purch_type', 'cntr_lvl', 'price_higher_pmp', 
+            'price_too_low', 'pmp', 'price'
+        ] +
+        [clm for clm in df.columns if clm.startswith(okpd_column_name)] +
+        [clm for clm in df.columns if clm.startswith('socs')] +
+        ['cntr_result']
+    )
+    
+    if debug:
+        print('Columns were reordered\n')
+    
+    return df[columns_new_order]
+
+def basic_feature_engineering(data: pd.DataFrame, okpd_column_name: str, debug=True):
+    df = feature_eng_new_time_vars_(data, debug=debug)
+    df = feature_eng_new_share_vars_(df, debug=debug)
+    df = drop_useless_columns_(df, okpd_column_name, debug=debug)
+    
+    # Transform object-type columns to float-type
+    for clmn in ('sup_cntr_avg_penalty_share', 'sup_sim_price_share', 'org_sim_price_share'):
+        df[clmn] = df[clmn].str.replace(',', '.').astype(float)
+    
+    return reorder_columns_(df, okpd_column_name, debug=debug)

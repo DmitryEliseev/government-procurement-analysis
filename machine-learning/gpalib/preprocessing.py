@@ -437,3 +437,281 @@ def basic_feature_engineering(data: pd.DataFrame, okpd_column_name: str, debug=T
         df[clmn] = df[clmn].str.replace(',', '.').astype(float)
     
     return reorder_columns_(df, okpd_column_name, debug=debug)
+
+# ======================================================================================
+# Preprocessing for model development based on findings from "1. exploratory-data-analysis.ipynb"
+# ======================================================================================
+
+def update_null_values_(data: pd.DataFrame):
+    """Update NaN and undefined values"""
+    
+    df = data.copy()
+    
+    for var in ['purch_type', 'cntr_lvl']:
+        df.loc[df[var] == -1, var] = df[var].mode()[0]
+    
+    df.loc[df['org_ter'].isna(), 'org_ter'] = df['org_ter'].mode()[0]
+    df.org_ter = df.org_ter.astype(int)
+    
+    return df
+
+def drop_useless_variables_(data: pd.DataFrame, num_var01: list, num_var: list, cat_bin_var: list, cat_var: list):
+    """Deleting useless variable"""
+    
+    useless_vars = [
+        'sup_1s_sev', 
+        'sup_1s_org_sev', 
+        'org_1s_sev', 
+        'org_1s_sup_sev',
+        'org_fed_cntr_share', 
+        'org_sub_cntr_share', 
+        'org_mun_cntr_share',
+        'price_higher_pmp',
+        'price_too_low',
+        'sup_ter',
+        'pmp'
+    ]
+    
+    # Updating list of available variables
+    for var in useless_vars:
+        if var in num_var01:
+            num_var01.remove(var)
+        elif var in num_var:
+            num_var.remove(var)
+        elif var in cat_bin_var:
+            cat_bin_var.remove(var)
+        else:
+            cat_var.remove(var)
+    
+    return data.drop(useless_vars + ['cntrID'], axis=1)
+
+def drop_correlating_variables_(data: pd.DataFrame, num_var01: list, num_var: list, cat_bin_var: list, cat_var: list):
+    """Drop correlating varibles to exclude multicollinearity"""
+    
+     # TODO: remove less correlating variables via extra nonliner transformations
+    correlating_vars = [
+        'okpd_good_share_mean', 
+        'okpd_good_share_max',
+        'price',
+        'org_running_cntr_num',
+        'sup_cntr_num',
+        'sign_quarter'
+    ]
+    
+    # Updating list of available variables
+    for var in correlating_vars:
+        if var in num_var01:
+            num_var01.remove(var)
+        elif var in num_var:
+            num_var.remove(var)
+        elif var in cat_bin_var:
+            cat_bin_var.remove(var)
+        else:
+            cat_var.remove(var)
+    
+    return data.drop(correlating_vars, axis=1)
+
+def apply_logarithmic_transformation_(data: pd.DataFrame, num_var: list):
+    """Apply logarithmic transformation for quantitative variables"""
+    
+    df = data.copy()
+    
+    for var in num_var:
+        # Set the lowest value equal to 1
+        df[var] = df[var].clip(lower=1)
+
+        # Logarithmic transformation
+        df[var] = np.log(df[var])
+    
+    return df
+
+def preprocess_data_after_eda(data: pd.DataFrame, num_var01: list, num_var: list, cat_bin_var: list, cat_var: list):
+    """Preprocess data on results got in Exploratory Data Analysis"""
+    
+    df = update_null_values_(data)
+    df = drop_useless_variables_(df, num_var01, num_var, cat_bin_var, cat_var)
+    df = drop_correlating_variables_(df, num_var01, num_var, cat_bin_var, cat_var)
+    df = apply_logarithmic_transformation_(df, num_var)
+    
+    return df
+
+# ======================================================================================
+# Function for cross-validation pipeline
+# ======================================================================================
+QUANTITATIVE_PARAMS_FILE = '../model/quantitative_params.json'
+CATEGORICAL_PARAMS_FILE = '../model/categorical_params.json'
+VERSION = 1
+
+def save_params(filename: str, data: dict):
+    """Saving params to file in JSON"""
+
+    with open(filename, 'w', encoding='utf-8') as file:
+        return file.write(json.dumps(data))
+    
+def save_model(clf, clf_name, version=VERSION):
+    """Save model"""
+    
+    with open('../model/{}_{}_mdl.pkl'.format(version, clf_name.lower()), 'wb') as file:
+        pickle.dump(clf, file)
+        
+def save_scaler(scl, version=VERSION):
+    """Save scaler"""
+    
+    with open('../model/{}_sk.pkl'.format(version), 'wb') as file:
+        pickle.dump(scl, file)
+        
+def load_params(filename: str):
+    """Reading params from JSON stored in file"""
+
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            return json.loads(file.read())
+    except FileNotFoundError as e:
+        logger.error(e)
+        
+def load_model(clf_name, version=VERSION):
+    """Load model"""
+    
+    with open('../model/{}_{}_mdl.pkl'.format(version, clf_name.lower()), 'rb') as file:
+        return pickle.load(file)
+    
+def load_scaler(version=VERSION):
+    """Load scaler"""
+    
+    with open('../model/{}_sk.pkl'.format(version), 'rb') as file:
+        return pickle.load(file)
+
+def process_outliers_for_cv(
+    data: pd.DataFrame, 
+    num_var: list, 
+    cat_bin_var: list, 
+    num_var01=['okpd_good_share_min', 'sup_cntr_avg_penalty_share', 'org_sim_price_share'], 
+    train=True, prefix=''
+):
+    """
+    Process outliers on cross validation. 
+    Values defined on train sample are used on test sample
+    """
+
+    if train:
+        params = {'percentile': {}}
+        scaler = StandardScaler()
+    else:
+        params = load_params(prefix + QUANTITATIVE_PARAMS_FILE)
+        scaler = load_scaler(prefix)
+
+    # Предобработка количественных переменных с нефиксированной областью значения
+    for nv in data[num_var]:
+        # New variable for saving outliers
+        new_var_name = nv + '_out'
+        data[new_var_name] = 0
+        cat_bin_var.append(new_var_name)
+        
+        if train:
+            dlimit = np.percentile(data[nv].values, 1)
+            ulimit = np.percentile(data[nv].values, 99)
+            params['percentile'][nv] = (dlimit, ulimit)
+        else:
+            dlimit = params['percentile'][nv][0]
+            ulimit = params['percentile'][nv][1]
+        
+        # Set 1 if value is outlier 
+        data[new_var_name] = data[nv].apply(lambda val: 1 if val < ulimit or val > dlimit else 0)
+        
+        # Lower and higher values equal to 1st and 99th percentile correspondingly
+        data[nv] = data[nv].clip(lower=dlimit, upper=ulimit)
+    
+    
+    for nv01 in data[num_var01]:
+        # New variable for saving outliers
+        new_var_name = nv01 + '_out'
+        data[new_var_name] = 0
+        cat_bin_var.append(new_var_name)
+        
+        if train:
+            dlimit = np.percentile(data[nv01].values, 1)
+            ulimit = np.percentile(data[nv01].values, 99)
+            params['percentile'][nv01] = (dlimit, ulimit)
+        else:
+            dlimit = params['percentile'][nv01][0]
+            ulimit = params['percentile'][nv01][1]
+        
+        # Set 1 if value is outlier 
+        data[new_var_name] = data[nv01].apply(lambda val: 1 if val < ulimit or val > dlimit else 0)
+        
+        # Lower and higher values equal to 1st and 99th percentile correspondingly
+        data[nv01] = data[nv01].clip(lower=dlimit, upper=ulimit)
+    
+    if train:
+        save_params(prefix + QUANTITATIVE_PARAMS_FILE, params)
+        data.loc[:, num_var] = scaler.fit_transform(data[num_var])
+        save_scaler(prefix)
+    else:
+        data.loc[:, num_var] = scaler.transform(data[num_var])
+
+    return data     
+
+def make_woe_encoding_for_cv(data: pd.DataFrame, cat_var: list, cat_bin_var: list, train=True, prefix=''):
+    """
+    Encode WoE: save coding from training sample and transfer them to test sample
+    """
+    
+    if train:
+        # Variable for storing train params
+        # grouping - for values that is grouped
+        # woe - for WoE values
+        params = {
+            'grouping': {},  
+            'woe': {}
+        }
+
+        # Grouping values that met in less than 0,5% case
+        for cv in cat_var:
+            params['grouping'][cv] = []
+            cnt = data[cv].value_counts()
+            for val, count in zip(cnt.index, cnt.values):
+                if count / data.shape[0] <= 0.005:
+                    params['grouping'][cv].append(val)
+                    data.loc[data[cv] == val, cv] = 'NEW'
+
+        bad_cntr = data[data.cntr_result == 1]
+        good_cntr = data[data.cntr_result == 0]
+
+        # WoE encoding
+        for cv in cat_var:
+            cnt = data[cv].value_counts()
+            params['woe'][cv] = {}
+            for val, count in zip(cnt.index, cnt.values):
+                good_with_val = good_cntr[good_cntr[cv] == val].shape[0]
+                bad_with_val = bad_cntr[bad_cntr[cv] == val].shape[0]
+
+                p = good_with_val / good_cntr.shape[0]
+                q = bad_with_val / bad_cntr.shape[0]
+                woe = round(np.log(p / q), 3)
+
+                params['woe'][cv][val] = woe
+                data.loc[data[cv] == val, cv] = woe
+
+        save_params(prefix + CATEGORICAL_PARAMS_FILE, params)
+    else:
+        params = load_params(prefix + CATEGORICAL_PARAMS_FILE)
+
+        for cv in cat_var:
+            # Grouping
+            if params['grouping'][cv]:
+                data[cv] = data[cv].replace(params['grouping'][cv], 'NEW')
+
+            # WoE encofing
+            data[cv] = data[cv].astype(str).map(params['woe'][cv])
+
+            # If in test sample there is value that was not met in train sample
+            if np.sum(data[cv].isnull()) > 0:
+                # Encoding as for 'NEW' variable
+                new_woe_code = params['woe'][cv].get('NEW', None)
+                if new_woe_code:
+                    # Changing unknown values on WoE code fore 'NEW' value
+                    data[cv] = data[cv].fillna(new_woe_code)
+                else:
+                    data[cv] = data[cv].fillna(0)
+
+    return data

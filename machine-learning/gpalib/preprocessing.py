@@ -516,6 +516,20 @@ def drop_correlating_variables_(data: pd.DataFrame, num_var01: list, num_var: li
     
     return data.drop(correlating_vars, axis=1)
 
+def fix_day_price_error(data: pd.DataFrame):
+        """Excluding inf values for `day_price`"""
+        
+        # Delete contracts where price is equal to 0
+        data = data.drop(data[data.price == 0].index)
+
+        # If `plan_cntr_len` == 0, then `plan_cntr_len` = 1
+        data.plan_cntr_len = data.plan_cntr_len.clip(lower=1)
+
+        # Updating `day_price` variable
+        data.day_price = data.price / data.plan_cntr_len
+        
+        return data
+
 def apply_logarithmic_transformation_(data: pd.DataFrame, num_var: list):
     """Apply logarithmic transformation for quantitative variables"""
     
@@ -535,6 +549,7 @@ def preprocess_data_after_eda(data: pd.DataFrame, num_var01: list, num_var: list
     
     df = update_null_values_(data)
     df = drop_useless_variables_(df, num_var01, num_var, cat_bin_var, cat_var)
+    df = fix_day_price_error(df)
     df = drop_correlating_variables_(df, num_var01, num_var, cat_bin_var, cat_var)
     df = apply_logarithmic_transformation_(df, num_var)
     

@@ -6,9 +6,14 @@ Library with functions for data preprocessing
 """
 
 from datetime import datetime
+import json
 
 import numpy as np
 import pandas as pd
+
+import pickle
+
+from sklearn.preprocessing import StandardScaler
 
 from gpalib.analysis import contracts_with_many_okpd
 
@@ -538,26 +543,26 @@ def preprocess_data_after_eda(data: pd.DataFrame, num_var01: list, num_var: list
 # ======================================================================================
 # Function for cross-validation pipeline
 # ======================================================================================
-QUANTITATIVE_PARAMS_FILE = '../model/quantitative_params.json'
-CATEGORICAL_PARAMS_FILE = '../model/categorical_params.json'
+QUANTITATIVE_PARAMS_FILE = 'model/{}_quantitative_params.json'
+CATEGORICAL_PARAMS_FILE = 'model/{}_categorical_params.json'
 VERSION = 1
 
 def save_params(filename: str, data: dict):
     """Saving params to file in JSON"""
 
     with open(filename, 'w', encoding='utf-8') as file:
-        return file.write(json.dumps(data))
+        return file.write(json.dumps(data, indent=4))
     
-def save_model(clf, clf_name, version=VERSION):
+def save_model(clf, clf_name, prefix, version=VERSION):
     """Save model"""
     
-    with open('../model/{}_{}_mdl.pkl'.format(version, clf_name.lower()), 'wb') as file:
+    with open('model/{}_{}_{}_mdl.pkl'.format(prefix, version, clf_name.lower()), 'wb') as file:
         pickle.dump(clf, file)
         
-def save_scaler(scl, version=VERSION):
+def save_scaler(scl, prefix, version=VERSION):
     """Save scaler"""
     
-    with open('../model/{}_sk.pkl'.format(version), 'wb') as file:
+    with open('model/{}_{}_sk.pkl'.format(prefix, version), 'wb') as file:
         pickle.dump(scl, file)
         
 def load_params(filename: str):
@@ -569,38 +574,35 @@ def load_params(filename: str):
     except FileNotFoundError as e:
         logger.error(e)
         
-def load_model(clf_name, version=VERSION):
+def load_model(clf_name, prefix, version=VERSION):
     """Load model"""
     
-    with open('../model/{}_{}_mdl.pkl'.format(version, clf_name.lower()), 'rb') as file:
+    with open('model/{}_{}_{}_mdl.pkl'.format(prefix, version, clf_name.lower()), 'rb') as file:
         return pickle.load(file)
     
-def load_scaler(version=VERSION):
+def load_scaler(prefix, version=VERSION):
     """Load scaler"""
     
-    with open('../model/{}_sk.pkl'.format(version), 'rb') as file:
+    with open('model/{}_{}_sk.pkl'.format(prefix, version), 'rb') as file:
         return pickle.load(file)
 
-def process_outliers_for_cv(
-    data: pd.DataFrame, 
-    num_var: list, 
-    cat_bin_var: list, 
-    num_var01=['okpd_good_share_min', 'sup_cntr_avg_penalty_share', 'org_sim_price_share'], 
-    train=True, prefix=''
-):
+def process_outliers_for_cv(data: pd.DataFrame, num_var: list, cat_bin_var: list, num_var01: list , train=True, prefix=''):
     """
-    Process outliers on cross validation. 
-    Values defined on train sample are used on test sample
+    Process outliers on cross validation. Values defined on train sample are used on test sample
     """
+    
+    # In previous steps some variables were deleted, save only currently existing variables
+    num_var = [nv for nv in num_var if nv in data.columns]
+    num_var01 = [nv01 for nv01 in num_var01 if nv01 in data.columns]
 
     if train:
         params = {'percentile': {}}
         scaler = StandardScaler()
     else:
-        params = load_params(prefix + QUANTITATIVE_PARAMS_FILE)
+        params = load_params(QUANTITATIVE_PARAMS_FILE.format(prefix))
         scaler = load_scaler(prefix)
 
-    # Предобработка количественных переменных с нефиксированной областью значения
+    # Preprocessing of quantitative variables (Q)
     for nv in data[num_var]:
         # New variable for saving outliers
         new_var_name = nv + '_out'
@@ -621,7 +623,7 @@ def process_outliers_for_cv(
         # Lower and higher values equal to 1st and 99th percentile correspondingly
         data[nv] = data[nv].clip(lower=dlimit, upper=ulimit)
     
-    
+    # Preprocessing of quantitative variables with values in [0, 1] (Q01)
     for nv01 in data[num_var01]:
         # New variable for saving outliers
         new_var_name = nv01 + '_out'
@@ -643,9 +645,9 @@ def process_outliers_for_cv(
         data[nv01] = data[nv01].clip(lower=dlimit, upper=ulimit)
     
     if train:
-        save_params(prefix + QUANTITATIVE_PARAMS_FILE, params)
+        save_params(QUANTITATIVE_PARAMS_FILE.format(prefix), params)
         data.loc[:, num_var] = scaler.fit_transform(data[num_var])
-        save_scaler(prefix)
+        save_scaler(scaler, prefix)
     else:
         data.loc[:, num_var] = scaler.transform(data[num_var])
 
@@ -655,6 +657,10 @@ def make_woe_encoding_for_cv(data: pd.DataFrame, cat_var: list, cat_bin_var: lis
     """
     Encode WoE: save coding from training sample and transfer them to test sample
     """
+    
+    # In previous steps some variables were deleted, save only currently existing variables
+    cat_var = [cv for cv in cat_var if cv in data.columns]
+    cat_bin_var = [cb for cb in cat_bin_var if cb in data.columns]
     
     if train:
         # Variable for storing train params
@@ -692,9 +698,9 @@ def make_woe_encoding_for_cv(data: pd.DataFrame, cat_var: list, cat_bin_var: lis
                 params['woe'][cv][val] = woe
                 data.loc[data[cv] == val, cv] = woe
 
-        save_params(prefix + CATEGORICAL_PARAMS_FILE, params)
+        save_params(CATEGORICAL_PARAMS_FILE.format(prefix), params)
     else:
-        params = load_params(prefix + CATEGORICAL_PARAMS_FILE)
+        params = load_params(CATEGORICAL_PARAMS_FILE.format(prefix))
 
         for cv in cat_var:
             # Grouping
@@ -715,3 +721,22 @@ def make_woe_encoding_for_cv(data: pd.DataFrame, cat_var: list, cat_bin_var: lis
                     data[cv] = data[cv].fillna(0)
 
     return data
+
+def preprocess_data_for_cv(
+    data: pd.DataFrame, 
+    num_var: list, cat_bin_var: list, cat_var: list,
+    num_var01=['okpd_good_share_min', 'sup_cntr_avg_penalty_share', 'org_sim_price_share'], 
+    train=True, prefix=''):
+    
+    """
+    Processing outliers, grouping rare values, WoE encoding on train sample.
+    Transfering saved params to test sample.
+    """ 
+    
+    data = process_outliers_for_cv(data, num_var, cat_bin_var, num_var01, train=train, prefix=prefix)
+    data = make_woe_encoding_for_cv(data, cat_var, cat_bin_var, train=train, prefix=prefix)
+    
+    X = data.drop(['cntr_result'], axis=1).values
+    y = data.cntr_result.values
+    
+    return X, y

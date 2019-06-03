@@ -111,3 +111,10 @@ venv.bak/
 
 # Data folder
 data/
+
+# Binary models
+machine-learning/model
+
+# Log files
+machine-learning/*.txt
+machine-learning/*.json

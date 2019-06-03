@@ -347,7 +347,7 @@ def transform_cros_val_scores(scores: dict):
     
     return pd.DataFrame(res)
     
-def cross_validate(model, data, scoring, cv=5, prefix='cv', silent=False):
+def cross_validate(clf, data, scoring, cv=5, prefix='cv', silent=False):
     """Function for manual cross validation"""
 
     scores = {}
@@ -362,7 +362,7 @@ def cross_validate(model, data, scoring, cv=5, prefix='cv', silent=False):
     
     skf = StratifiedKFold(n_splits=cv, random_state=RANDOM_SEED)
     for idx, (train_index, test_index) in enumerate(skf.split(X, y)):
-        data_train, data_test = data.loc[train_index], data.loc[test_index]
+        data_train, data_test = data.iloc[train_index], data.iloc[test_index]
         
         num_var01, num_var, cat_bin_var, cat_var = group_variables(data)
         
@@ -370,36 +370,36 @@ def cross_validate(model, data, scoring, cv=5, prefix='cv', silent=False):
         X_test, y_test = preprocess_data_for_cv(data_test, num_var, cat_bin_var, cat_var, train=False, prefix=prefix)
         
         start_time = time.time()
-        model.clf.fit(X_train, y_train)
-        model.train_time = int(time.time() - start_time)
-        scores['fit_time'].append( model.train_time)
+        clf.clf.fit(X_train, y_train)
+        clf.train_time = int(time.time() - start_time)
+        scores['fit_time'].append(clf.train_time)
 
         if not silent:
-            print('{}: fold {}'.format(model.short_name, idx + 1))
+            print('{}: fold {}'.format(clf.short_name, idx + 1))
         
-        model.y_train_real = y_train
-        model.y_test_real = y_test
-        model.y_train_pred = model.clf.predict(X_train)
-        model.y_test_pred = model.clf.predict(X_test)
-        model.y_train_pred_proba = model.clf.predict_proba(X_train)
-        model.y_test_pred_proba = model.clf.predict_proba(X_test)
+        clf.y_train_real = y_train
+        clf.y_test_real = y_test
+        clf.y_train_pred = clf.clf.predict(X_train)
+        clf.y_test_pred = clf.clf.predict(X_test)
+        clf.y_train_pred_proba = clf.clf.predict_proba(X_train)
+        clf.y_test_pred_proba = clf.clf.predict_proba(X_test)
           
         # Matching between real and predicted values
         clf.res = real_and_predicted_correlation(
-            model.y_test_real, 
-            model.y_test_pred, 
-            model.y_test_pred_proba
+            clf.y_test_real, 
+            clf.y_test_pred, 
+            clf.y_test_pred_proba
         )
 
         for alias in aliases:
             if alias == 'train_':
                 y_true = y_train
-                y_pred = model.y_train_pred
-                y_pred_proba = model.y_train_pred_proba
+                y_pred = clf.y_train_pred
+                y_pred_proba = clf.y_train_pred_proba
             else:
                 y_true = y_test
-                y_pred = model.y_test_pred
-                y_pred_proba = model.y_test_pred_proba
+                y_pred = clf.y_test_pred
+                y_pred_proba = clf.y_test_pred_proba
 
             for metric in scoring:
                 if metric == 'accuracy':

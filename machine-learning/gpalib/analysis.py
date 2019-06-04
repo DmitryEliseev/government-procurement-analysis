@@ -32,18 +32,18 @@ def okpd_analysis(data: pd.DataFrame, per1=1, per2=99):
     perc_value1 = np.percentile(df_okpds.okpd, per1)
     perc_value2 = np.percentile(df_okpds.okpd, per2)
 
-    print('Доля контрактов с несколькими ОКПД: {:.2f}'.format(df_okpds.shape[0] / df.shape[0]))
-    print('{} перценитиль: {}'.format(per1, perc_value1))
-    print('{} перценитиль: {}'.format(per2, perc_value2))
+    print('Share of contracts with several OKPD: {:.2f}'.format(df_okpds.shape[0] / df.shape[0]))
+    print('{} percentile: {}'.format(per1, perc_value1))
+    print('{} percentile: {}'.format(per2, perc_value2))
 
     sn.distplot(df_okpds.okpd, ax=plt.figure(figsize=(20, 5)).gca())
-    plt.title('Распределение кол-ва ОКПД на контракт')
+    plt.title('Distribution of number of OKPD per contract')
     plt.show()
 
     sn.distplot(
         df_okpds[(df_okpds.okpd >= perc_value1) & (df_okpds.okpd <= perc_value2)].okpd,
         ax=plt.figure(figsize=(20, 5)).gca())
-    plt.title('Распределение кол-ва ОКПД на контракт в рамках [{}, {}] перцентилей'.format(per1, per2))
+    plt.title('Distribution of number of OKPD per contract in boundaries of [{}, {}] percentiles'.format(per1, per2))
     plt.show()
 
     return df
@@ -220,7 +220,7 @@ def rate_feature_importance(
     
     return res_df, result_list
 
-def calculate_information_value(cat_variables: list, data: pd.DataFrame):
+def calculate_information_value(cat_variables: list, data: pd.DataFrame, print_only_important=False):
     """
     Calculation of IV. Link to example: 
     https://medium.com/@sundarstyles89/weight-of-evidence-and-information-value-using-python-6f05072e83eb
@@ -252,8 +252,10 @@ def calculate_information_value(cat_variables: list, data: pd.DataFrame):
             w = np.log(p / q)
             res[cv].append((p - q) * w)
 
-    for key, value in res.items():
-        print('{}: {:.3f}'.format(key, sum(res[key])))
+    for key, values in res.items():
+        if sum(values) < 0.1 and print_only_important:
+            continue
+        print('{}: {:.3f}'.format(key, sum(values)))
          
 def cntr_distrib_over_cat_var(data: pd.DataFrame, cat_var: str, fig_width=20, percent=True):
     """

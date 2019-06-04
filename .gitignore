@@ -116,5 +116,4 @@ data/
 machine-learning/model
 
 # Log files
-machine-learning/*.txt
 machine-learning/*.json

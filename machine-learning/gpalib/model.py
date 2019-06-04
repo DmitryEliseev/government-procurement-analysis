@@ -15,7 +15,8 @@ import numpy as np
 from matplotlib.ticker import MultipleLocator
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, log_loss
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import log_loss
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.metrics import roc_curve, auc, roc_auc_score
 
@@ -25,6 +26,10 @@ from sklearn.calibration import calibration_curve
 
 from gpalib.preprocessing import preprocess_data_for_cv
 from gpalib.analysis import group_variables
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 
 RANDOM_SEED = 42
 
@@ -71,66 +76,6 @@ def plot_roc_curve(y_test_real, y_test_pred_proba):
     plt.xlabel('False Positive Rate')
     plt.title('ROC')
     plt.show()
-
-def train_one_model(clf, clf_name, X, y, kfold=5, silent=False):
-    """Function for training one model"""
-    
-    start_time = time.time()
-    
-    if silent:
-        print('Training %s' % clf_name)
-    
-    # Cross validation
-    kfolds_generator = StratifiedKFold(n_splits=kfold, random_state=RANDOM_SEED)
-    for idx, (train_index, test_index) in enumerate(kfolds_generator.split(X, y)):
-        if not silent:
-            print('Training {} fold'.format(idx + 1))
-        
-        X_train = X[train_index]
-        X_test = X[test_index]
-    
-        y_train = y[train_index]
-        y_test = y[test_index]
-    
-        clf.clf.fit(X_train, y_train)
-    
-        clf.y_train_real = np.concatenate((clf.y_train_real, y_train))
-        clf.y_test_real = np.concatenate((clf.y_test_real, y_test))
-
-        clf.y_train_pred = np.concatenate((clf.y_train_pred, clf.clf.predict(X_train)))
-        clf.y_test_pred = np.concatenate((clf.y_test_pred, clf.clf.predict(X_test)))
-        
-        clf.y_train_pred_proba = np.concatenate((clf.y_train_pred_proba, clf.clf.predict_proba(X_train))) 
-        clf.y_test_pred_proba = np.concatenate((clf.y_test_pred_proba, clf.clf.predict_proba(X_test))) 
-    
-    # Matching between real and predicted values
-    clf.res = real_and_predicted_correlation(clf.y_test_real, clf.y_test_pred, clf.y_test_pred_proba)
-    
-    # Time of training
-    clf.train_time = int(time.time() - start_time)
-    
-    # Saving model
-    save_model(clf.clf, clf_name)
-    
-    if not silent:
-        print("Training took %s seconds\n" % (time.time() - start_time))
-        # General information about model
-        print_classifier_info(
-            clf_name, clf.y_train_real, clf.y_train_pred, 
-            clf.y_test_real, clf.y_test_pred, clf.y_test_pred_proba
-        )
-        
-        # Confusion matrix
-        plot_confusion_matrix(
-            confusion_matrix(clf.y_test_real, clf.y_test_pred), 
-            classes=clf.clf.classes_, 
-        )
-        
-        # Probability power
-        plot_dependence(clf.res)
-        
-        # ROC
-        plot_roc_curve(clf.y_test_real, clf.y_test_pred_proba[:,1])
 
 def assess_probability_power(clfs, figsize=(20, 10)):
     """Visualization of probabilistic power of classifier"""
@@ -219,7 +164,10 @@ def plot_confusion_matrixes(classifiers, normalize=False, title='Confusion matri
         ax = fig.add_subplot(1, num_of_clf, idx + 1)
             
         cm = confusion_matrix(clf.y_test_real, clf.y_test_pred)
-        classes = clf.clf.classes_
+        if clf.model_code.startswith('NN'):
+            classes = [0, 1]
+        else:
+            classes = clf.clf.classes_
    
         if normalize:
             cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
@@ -254,12 +202,13 @@ def custom_classification_report(classifiers):
             precision_score(clf.y_test_real, clf.y_test_pred, pos_label=1),
             recall_score(clf.y_test_real, clf.y_test_pred, pos_label=0),
             recall_score(clf.y_test_real, clf.y_test_pred, pos_label=1),
+            f1_score(clf.y_test_real, clf.y_test_pred),
             accuracy_score(clf.y_test_real, clf.y_test_pred)]
         )
         
     return pd.DataFrame(
         np.transpose(np.array(scores)),
-        index=['precision_0', 'precision_1', 'recall_0', 'recall_1', 'accuracy'],
+        index=['precision_0', 'precision_1', 'recall_0', 'recall_1', 'f_score', 'accuracy'],
         columns=[clf.short_name for clf in classifiers]).round(3)
 
 def plot_dependences(classifiers, figsize=(20, 10), title=None):
@@ -274,6 +223,13 @@ def plot_dependences(classifiers, figsize=(20, 10), title=None):
         ax = fig.add_subplot(230 + idx + 1)
         
         counter0, counter1 = Counter(), Counter()
+        
+        if not hasattr(clf, 'res'):
+            clf.res = real_and_predicted_correlation(
+                clf.y_test_real, 
+                clf.y_test_pred, 
+                clf.y_test_pred_proba
+            )
 
         for index, row in clf.res.iterrows():
             proba = round(row['proba_pred'], 2)
@@ -411,3 +367,90 @@ def cross_validate(clf, data, scoring, cv=5, prefix='cv', silent=False):
 
                 scores[alias + metric].append(score)
     return scores
+
+
+def validate_model(clf, train_data, valid_data, silent=False):
+    """Function for training one model"""
+    
+    scores = {}
+    aliases = ('train_', 'test_')
+    scores['fit_time'] = []
+
+    for alias in aliases:
+        for metric in scoring:
+            scores[alias + metric] = []
+
+
+    num_var01, num_var, cat_bin_var, cat_var = group_variables(data)
+    X_train, y_train = preprocess_data_for_cv(train_data, num_var, cat_bin_var, cat_var, train=True, prefix=prefix)
+    X_val, y_val = preprocess_data_for_cv(valid_data, num_var, cat_bin_var, cat_var, train=False, prefix=prefix)
+
+    start_time = time.time()
+    clf.clf.fit(X_train, y_train)
+    clf.train_time = int(time.time() - start_time)
+    scores['fit_time'].append(clf.train_time)
+
+    clf.y_train_real = y_train
+    clf.y_test_real = y_val
+    clf.y_train_pred = clf.clf.predict(X_train)
+    clf.y_test_pred = clf.clf.predict(X_val)
+    clf.y_train_pred_proba = clf.clf.predict_proba(X_train)
+    clf.y_test_pred_proba = clf.clf.predict_proba(X_val)
+
+    # Matching between real and predicted values
+    clf.res = real_and_predicted_correlation(
+        clf.y_test_real, 
+        clf.y_test_pred, 
+        clf.y_test_pred_proba
+    )
+
+    for alias in aliases:
+        if alias == 'train_':
+            y_true = y_train
+            y_pred = clf.y_train_pred
+            y_pred_proba = clf.y_train_pred_proba
+        else:
+            y_true = y_val
+            y_pred = clf.y_test_pred
+            y_pred_proba = clf.y_test_pred_proba
+
+        for metric in scoring:
+            if metric == 'accuracy':
+                score = accuracy_score(y_true, y_pred)
+            elif metric == 'roc_auc':
+                score = roc_auc_score(y_true, y_pred_proba[:, 1])
+            elif metric == 'neg_log_loss':
+                score = -log_loss(y_true, y_pred_proba[:, 1])
+
+            scores[alias + metric].append(score)
+    return scores
+
+def hyperopt_train_test(train_data: pd.DataFrame, params: dict, history_storage: dict, cv=2, prefix='hp'):
+    """Function for parameter tuning with Hyperopt"""
+    
+    clf_type = params['type']
+    del params['type']
+    
+    if clf_type == 'LogReg':
+        clf = LogisticRegression(**params)
+    elif clf_type == 'RandForest':
+        clf = RandomForestClassifier(**params)
+    elif clf_type == 'XGBoost': 
+        clf = XGBClassifier(**params)
+    
+    scores = cross_validate(
+        Classifier(clf, '', clf_type, ''), 
+        train_data, 
+        ['neg_log_loss'], 
+        cv=cv, 
+        silent=True, 
+        prefix=prefix)
+    
+    score = np.mean(scores['test_neg_log_loss'])
+    
+    # Save important params and score
+    history_storage['model'].append(clf_type)
+    history_storage['params'].append(params)
+    history_storage['score'].append(score)
+    
+    return score

@@ -25,6 +25,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.calibration import calibration_curve
 
 from gpalib.preprocessing import preprocess_data_for_cv
+from gpalib.preprocessing import save_model
 from gpalib.analysis import group_variables
 
 from sklearn.linear_model import LogisticRegression
@@ -348,6 +349,9 @@ def cross_validate(clf, data, scoring, cv=3, prefix='', silent=False):
 
         if not silent:
             print('{}: fold {}'.format(clf.short_name, idx + 1))
+
+        # Saving model
+        save_model(clf.clf, clf.short_name, prefix)
 
         clf.y_train_real = y_train
         clf.y_test_real = y_test
